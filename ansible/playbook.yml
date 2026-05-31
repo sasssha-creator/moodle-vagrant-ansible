@@ -1,0 +1,102 @@
+---
+- name: Розгортання інфраструктури Moodle
+  hosts: all
+  become: true
+  vars:
+    db_name: moodle
+    db_user: moodleuser
+    db_pass: MoodleSecurePassword123!
+    moodle_version: "MOODLE_403_STABLE"
+
+  tasks:
+    - name: Оновлення списку пакетів apt
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Встановлення Apache, MySQL, PHP та модулів
+      apt:
+        name:
+          - apache2
+          - mysql-server
+          - php
+          - libapache2-mod-php
+          - php-mysql
+          - php-iconv
+          - php-mbstring
+          - php-curl
+          - php-tokenizer
+          - php-xml
+          - php-gd
+          - php-intl
+          - php-xmlrpc
+          - php-soap
+          - php-zip
+          - git
+          - python3-pip
+          - python3-pymysql
+        state: present
+
+    - name: Запуск сервісів Apache та MySQL
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop:
+        - apache2
+        - mysql
+
+    - name: Створення бази даних для Moodle
+      mysql_db:
+        name: "{{ db_name }}"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Створення користувача бази даних
+      mysql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_pass }}"
+        priv: "{{ db_name }}.*:ALL"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Завантаження Moodle з GitHub
+      git:
+        repo: 'https://github.com/moodle/moodle.git'
+        dest: /var/www/html/moodle
+        version: "{{ moodle_version }}"
+        depth: 1
+
+    - name: Створення папки для даних Moodle (moodledata)
+      file:
+        path: /var/www/moodledata
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0777'
+
+    - name: Налаштування прав для файлів Moodle
+      file:
+        path: /var/www/html/moodle
+        owner: www-data
+        group: www-data
+        recurse: yes
+
+    - name: Створення конфігурації Apache з шаблону
+      template:
+        src: templates/moodle.conf.j2
+        dest: /etc/apache2/sites-available/moodle.conf
+
+    - name: Активація нового сайту в Apache
+      command: "{{ item }}"
+      loop:
+        - a2ensite moodle
+        - a2dissite 000-default
+        - a2enmod rewrite
+      notify: Перезапуск Apache
+
+  handlers:
+    - name: Перезапуск Apache
+      service:
+        name: apache2
+        state: restarted
