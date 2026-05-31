@@ -94,6 +94,12 @@
         - a2dissite 000-default
         - a2enmod rewrite
       notify: Перезапуск Apache
+    - name: Збільшення max_input_vars в php.ini
+      lineinfile:
+        path: /etc/php/8.1/apache2/php.ini
+        regexp: '^;?max_input_vars\s*='
+        line: 'max_input_vars = 5000'
+      notify: Перезапуск Apache
 
   handlers:
     - name: Перезапуск Apache
